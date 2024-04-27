@@ -21,9 +21,9 @@ const semicolon = byte(';')
 
 type StationData struct {
   count int;
-  sum float64;
-  min float64;
-  max float64;
+  sum int;
+  min int;
+  max int;
 }
 
 func main() {
@@ -96,12 +96,12 @@ func main() {
         prvLineIdx := -1
         prvSemiIdx := -1
         name := ""
-        measurement := 0.0
+        measurement := 0
         for i := 0; i < len(buf); i++ {
 
           if buf[i] == newline {
             measurementBuf := buf[prvSemiIdx+1:i]
-            measurement = parseFloat(&measurementBuf)
+            measurement = parseInt(&measurementBuf)
             prvLineIdx = i
           } else if buf[i] == semicolon {
             nameBuf := buf[prvLineIdx+1:i]
@@ -174,7 +174,7 @@ func main() {
   sort.Strings(keys)
 
   for _, key := range keys {
-    fmt.Printf("%s=%.1f/%.1f/%.1f\n", key, combinedStations[key].min, combinedStations[key].sum/float64(combinedStations[key].count), combinedStations[key].max)
+    fmt.Printf("%s=%.1f/%.1f/%.1f\n", key, float32(combinedStations[key].min)/10, float32(combinedStations[key].sum)/float32(combinedStations[key].count*10), float32(combinedStations[key].max)/10)
   }
 
 }
@@ -200,7 +200,7 @@ func readLine(file *os.File, buf *[]byte) []byte {
   return (*buf)[:newLineIdx+1]
 }
 
-func parseFloat(str *[]byte) float64 {
+func parseInt(str *[]byte) int {
   negative := false
   i := 0
   if (*str)[0] == dash {
@@ -211,14 +211,13 @@ func parseFloat(str *[]byte) float64 {
   num := 0
   for ;i < len(*str); i++ {
     if (*str)[i] != period {
-      num *= 10
-      num += int((*str)[i]) - 48
+      num = num * 10 + int((*str)[i]) - 48
     }
   }
 
   if negative {
-    num *= -1
+    return num * -1
   }
 
-  return float64(num) / 10
+  return num
 }
