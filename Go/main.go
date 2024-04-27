@@ -7,7 +7,6 @@ import (
   "os"
   "runtime"
   "sort"
-  "strconv"
   "sync"
   "strings"
   "unsafe"
@@ -102,7 +101,7 @@ func main() {
 
           if buf[i] == newline {
             measurementBuf := buf[prvSemiIdx+1:i]
-            measurement, err = strconv.ParseFloat(*(*string)(unsafe.Pointer(&measurementBuf)), 64)
+            measurement = parseFloat(&measurementBuf)
             prvLineIdx = i
           } else if buf[i] == semicolon {
             nameBuf := buf[prvLineIdx+1:i]
@@ -199,4 +198,27 @@ func readLine(file *os.File, buf *[]byte) []byte {
   }
 
   return (*buf)[:newLineIdx+1]
+}
+
+func parseFloat(str *[]byte) float64 {
+  negative := false
+  i := 0
+  if (*str)[0] == dash {
+    negative = true
+    i = 1
+  }
+
+  num := 0
+  for ;i < len(*str); i++ {
+    if (*str)[i] != period {
+      num *= 10
+      num += int((*str)[i]) - 48
+    }
+  }
+
+  if negative {
+    num *= -1
+  }
+
+  return float64(num) / 10
 }
