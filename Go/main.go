@@ -9,6 +9,8 @@ import (
   "sort"
   "strconv"
   "sync"
+  "strings"
+  "unsafe"
 )
 
 const bufSize = 10*1024
@@ -38,7 +40,7 @@ func main() {
   defaultChunk := fileInfo.Size() / int64(cpus)
   chunkLeftovers := fileInfo.Size() % int64(cpus)
 
-  stations := make([]map[string]StationData, cpus)
+  stations := make([]map[string]*StationData, cpus)
 
   for i := 0; i < cpus; i++ {
     currThread := i
@@ -47,7 +49,7 @@ func main() {
       threadChunk += chunkLeftovers
     }
 
-    stations[currThread] = make(map[string]StationData)
+    stations[currThread] = make(map[string]*StationData)
 
     wg.Add(1)
     go func() {
@@ -99,10 +101,12 @@ func main() {
         for i := 0; i < len(buf); i++ {
 
           if buf[i] == newline {
-            measurement, err = strconv.ParseFloat(string(buf[prvSemiIdx+1:i]), 64)
+            measurementBuf := buf[prvSemiIdx+1:i]
+            measurement, err = strconv.ParseFloat(*(*string)(unsafe.Pointer(&measurementBuf)), 64)
             prvLineIdx = i
           } else if buf[i] == semicolon {
-            name = string(buf[prvLineIdx+1:i])
+            nameBuf := buf[prvLineIdx+1:i]
+            name = *(*string)(unsafe.Pointer(&nameBuf))
             prvSemiIdx = i
             continue
           } else {
@@ -120,10 +124,9 @@ func main() {
               station.max = measurement
             }
 
-            stations[currThread][name] = station
           } else {
-            station := StationData{ count: 1, sum: measurement, min: measurement, max: measurement }
-            stations[currThread][name] = station
+            station := &StationData{ count: 1, sum: measurement, min: measurement, max: measurement }
+            stations[currThread][strings.Clone(name)] = station
           }
 
           if readCount + int64(i) + 1 >= threadChunk {
@@ -138,8 +141,9 @@ func main() {
 
   wg.Wait()
 
-  combinedStations := make(map[string]StationData)
-  for _, currStations := range stations {
+  combinedStations := make(map[string]*StationData)
+  for i := 0; i < len(stations); i++ {
+    currStations := stations[i]
     for key := range currStations {
       currStation := currStations[key]
       if combinedStation, ok := combinedStations[key]; ok {
@@ -154,7 +158,6 @@ func main() {
           combinedStation.max = currStation.max
         }
 
-        combinedStations[key] = combinedStation
       } else {
         combinedStations[key] = currStation
       }
