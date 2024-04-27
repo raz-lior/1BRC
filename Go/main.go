@@ -49,7 +49,7 @@ func main() {
       threadChunk += chunkLeftovers
     }
 
-    stations[currThread] = make(map[string]*StationData)
+    stations[currThread] = make(map[string]*StationData, 50000)
 
     wg.Add(1)
     go func() {
