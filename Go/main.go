@@ -1,16 +1,22 @@
 package main
 
 import (
-  "bufio"
   "fmt"
+  "io"
   "log"
   "os"
+  "runtime"
   "sort"
   "strconv"
-  "strings"
-  "runtime"
   "sync"
 )
+
+const bufSize = 10*1024
+const smallBufSize = 100
+const dash = byte('-')
+const period = byte('.')
+const newline = byte('\n')
+const semicolon = byte(';')
 
 type StationData struct {
   count int;
@@ -48,44 +54,84 @@ func main() {
       defer wg.Done()
       file, err := os.Open(filePath)
       if err != nil {
-        log.Fatal("can not open the file: ", err)
+        log.Fatalln("can not open the file: ", err)
       }
       defer file.Close()
 
+      buf := make([]byte, bufSize+smallBufSize)
+      smallBuf := make([]byte, smallBufSize)
+
       file.Seek(int64(currThread)*defaultChunk, 0)
-      lineScanner := bufio.NewScanner(file)
       if currThread > 0 {
-        lineScanner.Scan() // ignore probable partial first line since it is handled by the previous chunk handler
+        // ignore probable partial first line since it is handled by the previous chunk handler
+        readLine(file, &smallBuf)
       }
 
       readCount := int64(0)
-      for lineScanner.Scan() && readCount <= threadChunk {
-        line := lineScanner.Text()
-        readCount += int64(len([]byte(line)))
-        lineParts := strings.Split(line, ";")
-        name := lineParts[0]
-        measurement, err := strconv.ParseFloat(lineParts[1], 64)
-        if err != nil {
-          log.Fatalf("error parsing %s", lineParts[1])
+      for readCount <= threadChunk {
+        clear(buf)
+        clear(smallBuf)
+        buf = buf[:bufSize]
+
+        n, err := file.Read(buf)
+        if err == io.EOF {
+          return
+        } else if err != nil {
+          log.Fatalln("got error while reading the file: ", err)
         }
 
-        if station, ok := stations[currThread][name]; ok {
-          station.count++
-          station.sum += measurement
-          if measurement < station.min {
-            station.min = measurement
+        buf = buf[:n]
+
+        // read the rest of the line and add to buffer
+        if buf[len(buf)-1] != newline {
+
+          restOfLine := readLine(file, &smallBuf)
+
+          if len(restOfLine) > 0 {
+            buf = append(buf, restOfLine...)
           }
-
-          if measurement > station.max {
-            station.max = measurement
-          }
-
-          stations[currThread][name] = station
-
-        } else {
-          station := StationData{ count: 1, sum: measurement, min: measurement, max: measurement }
-          stations[currThread][name] = station
         }
+
+        prvLineIdx := -1
+        prvSemiIdx := -1
+        name := ""
+        measurement := 0.0
+        for i := 0; i < len(buf); i++ {
+
+          if buf[i] == newline {
+            measurement, err = strconv.ParseFloat(string(buf[prvSemiIdx+1:i]), 64)
+            prvLineIdx = i
+          } else if buf[i] == semicolon {
+            name = string(buf[prvLineIdx+1:i])
+            prvSemiIdx = i
+            continue
+          } else {
+            continue
+          }
+
+          if station, ok := stations[currThread][name]; ok {
+            station.count++
+            station.sum += measurement
+            if measurement < station.min {
+              station.min = measurement
+            }
+
+            if measurement > station.max {
+              station.max = measurement
+            }
+
+            stations[currThread][name] = station
+          } else {
+            station := StationData{ count: 1, sum: measurement, min: measurement, max: measurement }
+            stations[currThread][name] = station
+          }
+
+          if readCount + int64(i) + 1 >= threadChunk {
+            break
+          }
+        }
+
+        readCount += int64(len(buf))
       }
     }()
   }
@@ -129,4 +175,25 @@ func main() {
     fmt.Printf("%s=%.1f/%.1f/%.1f\n", key, combinedStations[key].min, combinedStations[key].sum/float64(combinedStations[key].count), combinedStations[key].max)
   }
 
+}
+
+func readLine(file *os.File, buf *[]byte) []byte {
+  m, err := file.Read(*buf)
+  if err != nil {
+    log.Fatalln("can not read initial part. ", err)
+  }
+
+  newLineIdx := -1
+  for i := 0; i < m; i++ {
+    if (*buf)[i] == newline {
+      newLineIdx = i
+      break
+    }
+  }
+
+  if m > 0 {
+    file.Seek(int64(newLineIdx+1-m),1)
+  }
+
+  return (*buf)[:newLineIdx+1]
 }
