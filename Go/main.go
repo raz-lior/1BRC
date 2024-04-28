@@ -19,6 +19,12 @@ const period = byte('.')
 const newline = byte('\n')
 const semicolon = byte(';')
 
+type SliceHeader struct {
+  Data uintptr;
+  Len int;
+  Cap int;
+}
+
 type StationData struct {
   count int;
   sum int;
@@ -68,6 +74,10 @@ func main() {
         readLine(file, &smallBuf)
       }
 
+      bufPtr := (*SliceHeader)(unsafe.Pointer(&buf)).Data
+      nameSH := SliceHeader{}
+      measurementSH := SliceHeader{}
+
       readCount := int64(0)
       for readCount <= threadChunk {
         clear(buf)
@@ -93,20 +103,24 @@ func main() {
           }
         }
 
-        prvLineIdx := -1
-        prvSemiIdx := -1
+        prvLineIdx := uintptr(0)
+        prvSemiIdx := uintptr(0)
         name := ""
         measurement := 0
         for i := 0; i < len(buf); i++ {
 
           if buf[i] == newline {
-            measurementBuf := buf[prvSemiIdx+1:i]
-            measurement = parseInt(&measurementBuf)
-            prvLineIdx = i
+            measurementSH.Data = bufPtr + prvSemiIdx
+            measurementSH.Len = i - int(prvSemiIdx)
+            measurementSH.Cap = measurementSH.Len
+            measurement = parseInt((*[]byte)(unsafe.Pointer(&measurementSH)))
+            prvLineIdx = uintptr(i+1)
           } else if buf[i] == semicolon {
-            nameBuf := buf[prvLineIdx+1:i]
-            name = *(*string)(unsafe.Pointer(&nameBuf))
-            prvSemiIdx = i
+            nameSH.Data = bufPtr + prvLineIdx
+            nameSH.Len = i - int(prvLineIdx)
+            nameSH.Cap = nameSH.Len
+            name = *(*string)(unsafe.Pointer(&nameSH))
+            prvSemiIdx = uintptr(i+1)
             continue
           } else {
             continue
